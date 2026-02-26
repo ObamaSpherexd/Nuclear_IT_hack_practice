@@ -19,7 +19,7 @@ st.sidebar.header("⚙️ Параметры решётки")
 q1_f = st.sidebar.slider("Q1 фокусное расстояние (м)", 1.0, 20.0, 5.0, 0.5)
 q2_f = st.sidebar.slider("Q2 фокусное расстояние (м)", -20.0, -1.0, -5.0, 0.5)
 drift_l = st.sidebar.slider("Длина дрейфа (м)", 0.5, 5.0, 2.0, 0.5)
-epsilon = st.sidebar.number_input("Эмиттанс (м·рад)", value=1e-6, format="%.1e")
+epsilon = st.sidebar.number_input("Эмиттанс (м·рад)", value=1e-6, format="%.1e",min_value=0.0e+0)
 beta0 = st.sidebar.number_input("Начальная β (м)", value=10.0, step=1.0)
 
 # === Классы (те же самые) ===
