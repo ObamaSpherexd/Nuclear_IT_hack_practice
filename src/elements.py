@@ -52,16 +52,22 @@ class Quadrupole(Element):
     '''
     def __init__(self, k:float=None, length:float=0.0, f:float=None, name:str="Quad"):
         super().__init__(name, length)
-        
+        self.f=None
+        self.k=None
+
         if k is not None:
             self.k=k
+            if length==0:
+                self.f=1.0/k if abs(k)>1e-10 else None
+
         elif f is not None and length>0:
             # convert f to k for thick lens
             self.k=1/(f*length) if abs(f)>1e-10 else 0
+            self.f=f
         elif f is not None:
             # thin lense
             self.k=0
-            self.f_thin=f
+            self.f=f
         else:
             raise ValueError('you need to input k or f')
         
@@ -72,7 +78,7 @@ class Quadrupole(Element):
         '''Matrix for X axis'''
         if self.length==0:
             # thin lens
-            return np.array([[1,0],[-1/self.f_thin,1]])
+            return np.array([[1,0],[-1/self.f,1]])
         if abs(self.k)<1e-10:
             # close to drift
             return np.array([[1,self.length],[0,1]])
@@ -97,7 +103,7 @@ class Quadrupole(Element):
         '''Matrix for Y axis (opposite k sign)'''
         if self.length == 0:
             # thin lens - opposite sign
-            return np.array([[1, 0], [1/self.f_thin, 1]])
+            return np.array([[1, 0], [1/self.f, 1]])
         
         if abs(self.k) < 1e-10:
             # close to drift
