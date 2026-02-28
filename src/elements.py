@@ -157,3 +157,62 @@ class Dipole(Element):
     def matrix_y(self)->np.ndarray:
         '''Vertical axis (as drift)'''
         return np.array([[1,self.length],[0,1]])
+    
+class Sextupole(Element):
+    '''
+    Sextuple (nonlinear element)
+    
+    Args:
+        k2: Sextuploe strenght [1/m^2] (k2 = (1/Bp) * ∂²By/∂x²)
+        length: sextupole length [m]
+    '''
+    def __init__(self,k2:float,length:float=0.0,name:str='Sext'):
+        super().__init__(name,length)
+        self.k2=k2
+        self.length = length if length>0 else 0.0
+
+    def matrix_x(self)->np.ndarray:
+        ''' 
+        ALARM: SEXTUPOLE IS NOT LINEAR
+        returning drift matrix for compatibility, but in reality
+        real tracing through track_particle_nonlinear()
+        '''
+        return np.array([[1,self.length],[0,1]])
+    
+    def matrix_y(self)->np.ndarray:
+        return np.array([[1,self.length],[0,1]])
+    
+    def kick(self,x:float,y:float)->tuple[float,float]:
+        '''
+        Calculates nonlinear kick of angles for thin lens
+        formulas:
+        Δx' = -1/2·k2·L·(x² - y²)
+        Δy' = k2·L·x·y
+        
+        Returns:
+            (dxp,dyp) - angle increments
+        '''
+
+        L=self.length if self.length>0 else 0.1 # effective length
+        dxp=-0.5*self.k2*L*(x**2-y**2)
+        dyp=self.k2*L*x*y
+        return dxp,dyp
+    
+    def track_particle_nonlinear(self,state_4d:np.ndarray)->np.ndarray:
+        '''
+        Tracing one particle throught a sextupole (non linear)
+        
+        Args:
+            state_4d:[x,x',y,y']
+        
+        Returns:
+            New 4d state
+        '''
+        x,xp,y,yp=state_4d
+
+        # using nonlinear kick
+        dxp,dyp=self.kick(x,y)
+
+        # coordinates dont change (thin lens), angles change nonlinerly
+        return np.array([x,xp+dxp,y,yp+dyp])
+    

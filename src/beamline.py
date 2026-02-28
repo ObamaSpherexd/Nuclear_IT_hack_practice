@@ -5,7 +5,7 @@ Contains Beamline class for managing a set of elements
 
 import numpy as np
 from typing import List,Tuple
-from elements import Element, Quadrupole
+from elements import Element, Quadrupole, Sextupole
 
 
 class Beamline:
@@ -110,3 +110,67 @@ class Beamline:
                 else:
                     strengths.append(elem.f_thin)
         return strengths
+    
+    def track_particle_nonlinear(self,state_4d:np.ndarray)->np.ndarray:
+        '''
+        Tracing one particle through the whole lattice remembering nonlinearity
+        
+        Args:
+            state_4d: initial state: [x,x',y,y']
+            
+        Returns:
+            End state after lattice
+        '''
+        state=state_4d
+        for elem in self.elements:
+            if isinstance(elem,Sextupole):
+                # nonlinear element - use kick
+                state=elem.track_particle_nonlinear(state)
+            else:
+                # linear element - use matrix
+                state=elem.track_4d(state)
+
+        return state
+    
+    def track_beam_nonlinear(self,particles:np.ndarray)->np.ndarray:
+        '''
+        Tracing multiple particles through a nonlinear lattice
+        
+        Args:
+            particles: array (N,4) - N particles, each [x,x',y,y']
+        
+        Returns:
+            array (N,4) - end states
+        '''
+        output=particles.copy()
+
+        for i in range(len(particles)):
+            output[i]=self.track_particle_nonlinear(particles[i])
+        return output
+    
+    def get_dynamic_aperture(self,n_particles:int=1000,
+                             max_amplitude:float=0.01)->Tuple[np.ndarray,np.ndarray]:
+        '''Evaluates the dynamic aperture (area of stability)
+        
+        Returns:
+            (amplitudes, stable_mask) - amplitudes and stability flag
+        '''
+        amplitudes=np.linspace(0.001,max_amplitude,n_particles)
+        stable_mask=np.zeros(n_particles,dtype=bool)
+
+        for i, amp in enumerate(amplitudes):
+            # test particle with given amplitude
+            state=np.array([amp,0,0,0]) # only x moved
+
+            # trace for 100 laps
+            stable=True
+            for turn in range(100):
+                state=self.track_particle_nonlinear(state)
+
+                # check whether the particle flew away
+                if abs(state[0])>0.1 or abs(state[2])>0.1: # aperture is 10 sm
+                    stable=False
+                    break
+            stable_mask[i]=stable
+        return amplitudes,stable_mask
+    
