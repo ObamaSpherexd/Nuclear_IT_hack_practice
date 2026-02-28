@@ -1,6 +1,7 @@
 '''
 Accelerator lattice module
-Contains Beamline class for managing a set of elements'''
+Contains Beamline class for managing a set of elements
+(UPDATED FOR 4D)'''
 
 import numpy as np
 from typing import List,Tuple
@@ -17,47 +18,95 @@ class Beamline:
         self.elements.append(element)
         return self
     
+    def one_turn_matrix_4d(self)->np.ndarray:
+        '''Calculates a full lap matrix 4D'''
+        M=np.eye(4)
+        for elem in self.elements:
+            M=elem.matrix_4d()@M
+        return M
+    
+    def is_stable_4d(self)->Tuple[bool,float,float]:
+        '''Checks stability condition |Tr(M)|<2 in both axis
+        Returns: (stable,trace_x,trace_y)
+        '''
+        M=self.one_turn_matrix_4d()
+        Mx=M[0:2,0:2]
+        My=M[2:4,2:4]
+        trace_x=np.trace(Mx)
+        trace_y=np.trace(My)
+        stable=(abs(trace_x)<2) and (abs(trace_y)<2)
+        
+        return stable,trace_x,trace_y
+    
+    def track_4d(self,state_4d:np.ndarray) ->np.ndarray:
+        '''Tracing 4D state vector to the end of the lattice'''
+        state=state_4d.copy()
+        for elem in self.elements:
+            state=elem.track_4d(state)
+        return state
+    
+    def get_length(self)->float:
+        '''Returns the full lattice length'''
+        return sum(elem.length for elem in self.elements)
+    
+    # Old methods for back compatibility
     def one_turn_matrix(self)->np.ndarray:
-        '''Calculates a full lap matrix'''
+        '''2D-matrix (only X) for back compatibility'''
         M=np.eye(2)
         for elem in self.elements:
-            M=elem.matrix()@M
+            M=elem.matrix_x() @ M
         return M
     
     def is_stable(self)->Tuple[bool,float]:
-        '''Checks stability condition |Tr(M)|<2'''
-        M=self.one_turn_matrix()
-        trace=np.trace(M)
-        return abs(trace)<2, trace
-    
-    def track_sigma_to_end(self,sigma0:np.ndarray) ->np.ndarray:
+        '''2D stability check'''
+        stable,trace_x,_=self.is_stable_4d()
+        return stable,trace_x
+
+    # === Sigma tracking (for Twiss) ===
+    def track_sigma_to_end(self, sigma0: np.ndarray) -> np.ndarray:
         '''Tracing Sigma matrix to the end of the lattice'''
-        sigma=sigma0.copy()
+        sigma = sigma0.copy()
         for elem in self.elements:
-            sigma=elem.track_sigma(sigma)
+            # using matrix_x for 2D tracing
+            M = elem.matrix_x()
+            sigma = M @ sigma @ M.T
         return sigma
     
-    def get_beta_along(self,sigma0:np.ndarray,epsilon:float=1e-6)->Tuple[np.ndarray, np.ndarray]:
+    def get_beta_along(self, sigma0: np.ndarray, epsilon: float = 1e-6) -> Tuple[np.ndarray, np.ndarray]:
         '''Calculates beta along the whole lattice'''
-        sigma=sigma0.copy()
-        s_positions=[0]
-        beta_history=[sigma[0,0]/epsilon]
-
+        sigma = sigma0.copy()
+        s_positions = [0]
+        beta_history = [sigma[0, 0] / epsilon]
+        
         for elem in self.elements:
-            sigma=elem.track_sigma(sigma)
-            s_positions.append(s_positions[-1]+elem.length)
-            beta_history.append(sigma[0,0]/epsilon)
-        return np.array(s_positions),np.array(beta_history)
+            M = elem.matrix_x()
+            sigma = M @ sigma @ M.T
+            s_positions.append(s_positions[-1] + elem.length)
+            beta_history.append(sigma[0, 0] / epsilon)
+        
+        return np.array(s_positions), np.array(beta_history)
     
-    def set_quadrupole_strengths(self,strengths:List[float]):
-        '''Sets focus lengths for quadrupoles'''
-        quad_index=0
+    def set_quadrupole_strengths(self, strengths: List[float]):
+        '''Sets quadrupole strengths (k values for thick lenses)'''
+        quad_index = 0
         for elem in self.elements:
-            if isinstance(elem,Quadrupole):
-                if quad_index<len(strengths):
-                    elem.f=strengths[quad_index]
-                quad_index+=1
-    def get_quadrupole_strengths(self)->List[float]:
-        '''Returns current quadrupole focus lengths'''
-        return [elem.f for elem in self.elements if isinstance(elem,Quadrupole)]
+            if isinstance(elem, Quadrupole):
+                if quad_index < len(strengths):
+                    # using k for thick
+                    if elem.length > 0:
+                        elem.k = strengths[quad_index]
+                    else:
+                        # using f for thin
+                        elem.f_thin = strengths[quad_index]
+                quad_index += 1
     
+    def get_quadrupole_strengths(self) -> List[float]:
+        '''Returns current quadrupole strengths'''
+        strengths = []
+        for elem in self.elements:
+            if isinstance(elem, Quadrupole):
+                if elem.length > 0:
+                    strengths.append(elem.k)
+                else:
+                    strengths.append(elem.f_thin)
+        return strengths
